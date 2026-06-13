@@ -1,0 +1,5 @@
+class_name,class_id,recording_id,source_csv,rows,raw_windows,clean_windows,reason,warnings,imputed_columns
+STANDING,0,STANDING:replay_2025-08-22_13-51-19swap,replay_2025-08-22_13-51-19swap.csv,963,956,7,recording has fewer than 20 clean windows,,{}
+SITTING,1,SITTING:replay_2025-08-22_13-44-11swap,replay_2025-08-22_13-44-11swap.csv,1240,1233,0,recording has fewer than 20 clean windows,,{}
+FALLING,3,FALLING:replay_2025-08-06_14-28-35,replay_2025-08-06_14-28-35.csv,12,5,5,recording has fewer than 20 clean windows,,{}
+FALLING,3,FALLING:results_falling_ED_162153,results_falling_ED_162153.csv,26,19,11,recording has fewer than 20 clean windows,imputed missing accx as 0; imputed missing posx as 0; imputed missing velx as 0,"{""accx"": 26, ""posx"": 26, ""velx"": 26}"

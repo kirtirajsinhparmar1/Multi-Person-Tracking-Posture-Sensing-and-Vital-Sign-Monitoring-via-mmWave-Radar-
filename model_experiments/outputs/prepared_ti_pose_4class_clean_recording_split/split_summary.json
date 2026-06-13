@@ -1,0 +1,78 @@
+{
+  "split_mode": "recording",
+  "train_recordings": 35,
+  "test_recordings": 8,
+  "train_samples": 6678,
+  "test_samples": 1297,
+  "train_window_counts_by_class": {
+    "STANDING": 2368,
+    "SITTING": 983,
+    "LYING": 1124,
+    "FALLING": 2203
+  },
+  "test_window_counts_by_class": {
+    "STANDING": 368,
+    "SITTING": 259,
+    "LYING": 328,
+    "FALLING": 342
+  },
+  "train_recording_counts_by_class": {
+    "STANDING": 6,
+    "SITTING": 6,
+    "LYING": 5,
+    "FALLING": 18
+  },
+  "test_recording_counts_by_class": {
+    "STANDING": 1,
+    "SITTING": 2,
+    "LYING": 1,
+    "FALLING": 4
+  },
+  "train_recordings_list": [
+    "FALLING:replay_2025-08-06_13-11-18",
+    "FALLING:replay_2025-08-06_13-15-29",
+    "FALLING:replay_2025-08-06_13-18-48",
+    "FALLING:replay_2025-08-06_13-35-26",
+    "FALLING:replay_2025-08-06_13-48-34",
+    "FALLING:replay_2025-08-06_13-52-50",
+    "FALLING:replay_2025-08-06_14-08-54",
+    "FALLING:replay_2025-08-06_14-14-05",
+    "FALLING:replay_2025-08-06_14-17-57",
+    "FALLING:replay_2025-08-06_14-34-27",
+    "FALLING:replay_2025-08-06_14-41-11",
+    "FALLING:replay_2025-08-06_15-11-52",
+    "FALLING:replay_2025-08-06_15-16-06",
+    "FALLING:results_falling_DYLAN_171228",
+    "FALLING:results_falling_EDDIE_172849",
+    "FALLING:results_falling_ED_162913",
+    "FALLING:results_falling_EMMANUEL175434",
+    "FALLING:results_falling_FAIK_163612",
+    "LYING:replay_2025-08-22_13-32-11swap",
+    "LYING:results_LYING_EDDIE_174406",
+    "LYING:results_LYING_ED_161122",
+    "LYING:results_LYING_EMMANUEL_181604",
+    "LYING:results_LYING_FAIK_165207",
+    "SITTING:replay_2025-09-18_14-47-34_final",
+    "SITTING:replay_2025-09-18_14-52-28_final",
+    "SITTING:results_SAT_EDDIE_165532",
+    "SITTING:results_SAT_ED_160805",
+    "SITTING:results_SAT_EMMANUEL_181059",
+    "SITTING:results_SAT_FAIK_165546",
+    "STANDING:replay_2025-08-22_13-48-32swap",
+    "STANDING:results_STOOD_DYLAN_170031",
+    "STANDING:results_STOOD_EDDIE_174905",
+    "STANDING:results_STOOD_ED_160456",
+    "STANDING:results_STOOD_EMMANUEL180704",
+    "STANDING:results_STOOD_FAIK_164849"
+  ],
+  "test_recordings_list": [
+    "FALLING:replay_2025-08-06_13-26-09",
+    "FALLING:replay_2025-08-06_14-11-54",
+    "FALLING:replay_2025-08-06_14-22-35",
+    "FALLING:replay_2025-08-06_14-45-09",
+    "LYING:results_LYING_DYLAN_170922",
+    "SITTING:replay_2025-09-18_14-47-34swap",
+    "SITTING:results_SAT_DYLAN_170501",
+    "STANDING:replay_2025-09-18_14-40-37_final"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "height_scale_min": 0.85,
+  "height_scale_max": 1.15,
+  "height_shift_std": 0.08,
+  "relative_y_scale_min": 0.85,
+  "relative_y_scale_max": 1.15,
+  "relative_y_noise_std": 0.05,
+  "velocity_noise_std": 0.08,
+  "acceleration_noise_std": 0.12,
+  "snr_scale_min": 0.5,
+  "snr_scale_max": 1.8,
+  "snr_noise_std": 0.05,
+  "snr_dropout": 0.3,
+  "point_dropout": 0.2,
+  "feature_noise_std": 0.01
+}

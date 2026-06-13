@@ -1,0 +1,1 @@
+time,frame,tid,x,y,z,vx,vy,vz,horizontal_speed,vertical_speed,height_drop,num_points,track_index,assoc_mode,selected_num_points,quality,low_quality,window_ready,window_count,window_age,raw_label,raw_confidence,smoothed_label,smoothed_confidence,final_label,final_confidence,motion_state,prob_STANDING,prob_SITTING,prob_LYING,prob_FALLING

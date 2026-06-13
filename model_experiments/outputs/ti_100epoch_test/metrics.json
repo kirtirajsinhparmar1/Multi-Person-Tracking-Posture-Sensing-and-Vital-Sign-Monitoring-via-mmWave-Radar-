@@ -1,0 +1,68 @@
+{
+  "accuracy_percent": 94.79438066482544,
+  "macro_f1": 0.9387308946837948,
+  "weighted_f1": 0.9466579334314967,
+  "num_samples": 19207,
+  "num_train": 15365,
+  "num_test": 3842,
+  "epochs": 100,
+  "batch_size": 64,
+  "learning_rate": 0.0001,
+  "classes_zip": "C:\\Users\\UBESC\\Desktop\\radar_toolbox_4_00_00_05\\source\\ti\\examples\\Industrial_and_Personal_Electronics\\Pose_And_Fall_Detection\\retraining_resources\\dataset\\classes.zip",
+  "class_names": [
+    "STANDING",
+    "SITTING",
+    "LYING",
+    "FALLING",
+    "WALKING"
+  ],
+  "class_counts": {
+    "STANDING": 5301,
+    "SITTING": 4745,
+    "LYING": 3230,
+    "FALLING": 3260,
+    "WALKING": 2671
+  },
+  "train_class_counts": {
+    "STANDING": 4240,
+    "SITTING": 3796,
+    "LYING": 2584,
+    "FALLING": 2608,
+    "WALKING": 2137
+  },
+  "test_class_counts": {
+    "STANDING": 1061,
+    "SITTING": 949,
+    "LYING": 646,
+    "FALLING": 652,
+    "WALKING": 534
+  },
+  "feature_names_22": [
+    "posz",
+    "velx",
+    "vely",
+    "velz",
+    "accx",
+    "accy",
+    "accz",
+    "y0",
+    "z0",
+    "snr0",
+    "y1",
+    "z1",
+    "snr1",
+    "y2",
+    "z2",
+    "snr2",
+    "y3",
+    "z3",
+    "snr3",
+    "y4",
+    "z4",
+    "snr4"
+  ],
+  "flatten_order": "channel_major",
+  "window_size": 8,
+  "input_size": 176,
+  "notes": "Model forward returns raw logits. Softmax is reporting-only."
+}

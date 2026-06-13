@@ -1,0 +1,3 @@
+run,model_type,normalize,augment,zero_snr,split_mode,balance_mode,class_weighting,weighted_sampler,accuracy,macro_f1,weighted_f1,best_epoch,best_val_loss,num_train_recordings,num_test_recordings
+outputs\ti_clean_recording_robust_300_fast,mlp,True,True,False,recording,none,balanced,False,81.79012345679013,0.8274635332476679,0.816707520305289,298,0.7711031696923967,39,9
+outputs\ti_clean_recording_robust_1600_fast,mlp,True,True,False,recording,none,balanced,False,87.70576131687243,0.890088512336255,0.8756185407214298,1510,0.3705297607943845,39,9

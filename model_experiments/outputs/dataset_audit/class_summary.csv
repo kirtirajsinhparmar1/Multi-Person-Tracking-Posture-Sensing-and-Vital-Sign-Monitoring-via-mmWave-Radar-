@@ -1,0 +1,6 @@
+class_name,recordings,usable_windows,min_windows_per_recording,max_windows_per_recording,mean_windows_per_recording
+STANDING,8,5301,277,1000,662.625
+SITTING,9,4745,26,932,527.2222222222222
+LYING,6,3230,251,778,538.3333333333334
+FALLING,24,3260,5,306,135.83333333333334
+WALKING,5,2671,145,1113,534.2

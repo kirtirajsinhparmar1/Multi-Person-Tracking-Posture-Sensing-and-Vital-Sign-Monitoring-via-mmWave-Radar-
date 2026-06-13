@@ -1,0 +1,10 @@
+PySide6
+shiboken6
+pyqtgraph
+pyserial
+numpy
+scipy
+matplotlib
+opencv-python
+PyOpenGL
+PyOpenGL_accelerate

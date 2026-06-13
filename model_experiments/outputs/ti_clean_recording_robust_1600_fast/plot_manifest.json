@@ -1,0 +1,38 @@
+[
+  {
+    "file": "loss_curve.png",
+    "description": "Training loss and validation loss by epoch."
+  },
+  {
+    "file": "accuracy_curve.png",
+    "description": "Training accuracy and validation accuracy by epoch."
+  },
+  {
+    "file": "f1_curve.png",
+    "description": "Validation macro F1 and weighted F1 by epoch."
+  },
+  {
+    "file": "confusion_matrix_counts.png",
+    "description": "Validation confusion matrix with raw counts."
+  },
+  {
+    "file": "confusion_matrix_normalized.png",
+    "description": "Row-normalized validation confusion matrix as percentages."
+  },
+  {
+    "file": "per_class_metrics.png",
+    "description": "Grouped per-class precision, recall, and F1 on validation data."
+  },
+  {
+    "file": "class_distribution.png",
+    "description": "Total, train, and validation window counts per class."
+  },
+  {
+    "file": "confidence_histogram.png",
+    "description": "Histogram of max predicted probability for correct vs incorrect predictions."
+  },
+  {
+    "file": "loss_accuracy_combo.png",
+    "description": "Two-panel loss and accuracy summary by epoch."
+  }
+]

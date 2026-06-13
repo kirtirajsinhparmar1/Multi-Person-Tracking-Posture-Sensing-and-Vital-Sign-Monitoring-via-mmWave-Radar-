@@ -1,0 +1,4 @@
+xWR6843
+3D People Tracking
+C:/Users/UBESC/Desktop/radar_toolbox_4_00_00_05/source/ti/examples/Industrial_and_Personal_Electronics/People_Tracking/3D_People_Tracking/chirp_configs/ODS_6m_default.cfg
+False
