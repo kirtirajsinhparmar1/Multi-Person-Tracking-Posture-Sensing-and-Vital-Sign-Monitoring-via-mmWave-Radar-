@@ -116,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--pose-moving-confirm-frames",
         type=int,
-        default=3,
+        default=4,
         help="Consecutive frames above speed threshold before final label becomes MOVING.",
     )
     parser.add_argument(
@@ -124,6 +124,24 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.35,
         help="Recent z-height drop threshold in meters for FALLING safety override.",
+    )
+    parser.add_argument(
+        "--pose-fall-vertical-speed-threshold",
+        type=float,
+        default=0.35,
+        help="Vertical speed threshold in m/s used to allow FALLING display.",
+    )
+    parser.add_argument(
+        "--pose-fall-high-confidence",
+        type=float,
+        default=0.85,
+        help="High ML confidence threshold used with mild height drop for FALLING.",
+    )
+    parser.add_argument(
+        "--pose-fall-min-height-drop-with-high-confidence",
+        type=float,
+        default=0.20,
+        help="Minimum height drop required when FALLING is accepted by high confidence.",
     )
     parser.add_argument(
         "--pose-min-associated-points-for-inference",
@@ -183,6 +201,174 @@ def parse_args() -> argparse.Namespace:
         "--allow-missing-scaler",
         action="store_true",
         help="Allow a normalized pose model to run without scaler files. Debug use only.",
+    )
+    parser.add_argument(
+        "--pose-human-models",
+        action="store_true",
+        help="Draw simple 3D human posture OBJ models for tracked people.",
+    )
+    parser.add_argument(
+        "--pose-human-model-dir",
+        default="ui_human_pose_models",
+        help="Directory containing human_standing.obj, human_sitting.obj, and human_lying.obj.",
+    )
+    parser.add_argument(
+        "--pose-human-model-mode",
+        choices=["replace_box", "overlay_box", "model_only"],
+        default="overlay_box",
+        help="How human models relate to TI target boxes.",
+    )
+    parser.add_argument(
+        "--pose-human-model-scale",
+        type=float,
+        default=1.0,
+        help="Global scale multiplier for human posture models.",
+    )
+    parser.add_argument(
+        "--pose-human-model-target-height",
+        type=float,
+        default=1.70,
+        help="Standing/MOVING model target height in meters before global scale.",
+    )
+    parser.add_argument(
+        "--pose-human-model-target-sitting-height",
+        type=float,
+        default=1.20,
+        help="Sitting model target height in meters before global scale.",
+    )
+    parser.add_argument(
+        "--pose-human-model-target-lying-length",
+        type=float,
+        default=1.70,
+        help="Lying/FALLING model target body length in meters before global scale.",
+    )
+    parser.add_argument(
+        "--pose-human-model-height-scale",
+        default="auto",
+        help="Use 'auto' for per-pose physical scaling, or provide an extra numeric multiplier.",
+    )
+    parser.add_argument(
+        "--pose-human-model-debug",
+        action="store_true",
+        help="Print per-frame human model placement details.",
+    )
+    parser.add_argument(
+        "--pose-human-model-opacity",
+        type=float,
+        default=1.0,
+        help="Human model opacity from 0.0 to 1.0.",
+    )
+    parser.add_argument(
+        "--pose-human-model-fallback",
+        choices=["box", "standing", "none"],
+        default="box",
+        help="Fallback for unknown/warmup labels or model-load failure.",
+    )
+    parser.add_argument(
+        "--pose-ground-z",
+        type=float,
+        default=0.0,
+        help="World Z coordinate of the floor/ground used to anchor human models.",
+    )
+    parser.add_argument(
+        "--pose-ground-plane",
+        action="store_true",
+        help="Draw a subtle ground plane/floor at --pose-ground-z.",
+    )
+    parser.add_argument(
+        "--pose-ground-plane-size",
+        type=float,
+        default=8.0,
+        help="Ground plane size in meters.",
+    )
+    parser.add_argument(
+        "--no-pose-ground-plane-grid",
+        dest="pose_ground_plane_grid",
+        action="store_false",
+        default=True,
+        help="Disable the grid overlay on the pose ground plane.",
+    )
+    parser.add_argument(
+        "--pose-ground-plane-alpha",
+        type=float,
+        default=0.18,
+        help="Ground plane opacity from 0.0 to 1.0.",
+    )
+    parser.add_argument(
+        "--pose-display-stability-frames",
+        type=int,
+        default=16,
+        help="Frames used for display-only pose stability/hysteresis.",
+    )
+    parser.add_argument(
+        "--pose-display-min-confidence",
+        type=float,
+        default=0.55,
+        help="Minimum confidence for a candidate pose to become the stable displayed pose.",
+    )
+    parser.add_argument(
+        "--no-pose-display-hysteresis",
+        dest="pose_display_hysteresis",
+        action="store_false",
+        default=True,
+        help="Disable display-only pose hysteresis.",
+    )
+    parser.add_argument(
+        "--pose-display-stability-ratio",
+        type=float,
+        default=0.70,
+        help="Majority ratio required over the display-stability window.",
+    )
+    parser.add_argument(
+        "--no-pose-falling-fast-update",
+        dest="pose_falling_fast_update",
+        action="store_false",
+        default=True,
+        help="Disable the shorter display threshold for high-confidence FALLING.",
+    )
+    parser.add_argument(
+        "--pose-fall-stability-frames",
+        "--pose-falling-stability-frames",
+        dest="pose_fall_stability_frames",
+        type=int,
+        default=6,
+        help="Display-stability frames required for high-confidence FALLING.",
+    )
+    parser.add_argument(
+        "--pose-sitting-stability-frames",
+        type=int,
+        default=8,
+        help="Display-stability frames required for SITTING.",
+    )
+    parser.add_argument(
+        "--pose-sitting-stability-ratio",
+        type=float,
+        default=0.50,
+        help="Majority ratio required for SITTING display updates.",
+    )
+    parser.add_argument(
+        "--pose-sitting-min-confidence",
+        type=float,
+        default=0.40,
+        help="Minimum confidence for SITTING display updates.",
+    )
+    parser.add_argument(
+        "--pose-sitting-max-speed",
+        type=float,
+        default=0.25,
+        help="Maximum horizontal speed in m/s for accepting SITTING.",
+    )
+    parser.add_argument(
+        "--pose-standing-min-confidence",
+        type=float,
+        default=0.50,
+        help="Minimum confidence for STANDING display updates.",
+    )
+    parser.add_argument(
+        "--pose-lying-min-confidence",
+        type=float,
+        default=0.50,
+        help="Minimum confidence for LYING display updates.",
     )
     return parser.parse_args()
 
@@ -475,6 +661,11 @@ def create_pose_manager_before_qt(args: argparse.Namespace, debug: bool):
             moving_speed_threshold=args.pose_moving_speed_threshold,
             moving_confirm_frames=args.pose_moving_confirm_frames,
             fall_height_drop_threshold=args.pose_fall_height_drop_threshold,
+            fall_vertical_speed_threshold=args.pose_fall_vertical_speed_threshold,
+            fall_high_confidence=args.pose_fall_high_confidence,
+            fall_min_height_drop_with_high_confidence=(
+                args.pose_fall_min_height_drop_with_high_confidence
+            ),
             min_associated_points_for_inference=(
                 args.pose_min_associated_points_for_inference
             ),
@@ -485,6 +676,24 @@ def create_pose_manager_before_qt(args: argparse.Namespace, debug: bool):
             label_min_confidence=args.pose_3d_label_min_confidence,
             label_max_distance=args.pose_3d_label_max_distance,
             label_debug=args.pose_3d_label_debug,
+            enable_human_models=args.pose_human_models,
+            human_model_debug=args.pose_human_model_debug,
+            display_stability_frames=args.pose_display_stability_frames,
+            display_min_confidence=args.pose_display_min_confidence,
+            display_hysteresis=args.pose_display_hysteresis,
+            display_stability_ratio=args.pose_display_stability_ratio,
+            falling_fast_update=args.pose_falling_fast_update,
+            fall_stability_frames=args.pose_fall_stability_frames,
+            sitting_stability_frames=args.pose_sitting_stability_frames,
+            sitting_stability_ratio=args.pose_sitting_stability_ratio,
+            sitting_min_confidence=args.pose_sitting_min_confidence,
+            sitting_max_speed=args.pose_sitting_max_speed,
+            standing_min_confidence=args.pose_standing_min_confidence,
+            lying_min_confidence=args.pose_lying_min_confidence,
+            ground_z=args.pose_ground_z,
+            human_model_target_height=args.pose_human_model_target_height,
+            human_model_target_sitting_height=args.pose_human_model_target_sitting_height,
+            human_model_target_lying_length=args.pose_human_model_target_lying_length,
             debug=pose_debug,
             log_dir=out_dir if args.pose_log else None,
             cfg_path=resolve_project_path(args.cfg),
@@ -515,7 +724,7 @@ def create_pose_manager_before_qt(args: argparse.Namespace, debug: bool):
     return pose_manager
 
 
-def attach_pose_manager(window, pose_manager, debug: bool):
+def attach_pose_manager(window, pose_manager, args: argparse.Namespace, debug: bool):
     if pose_manager is None:
         return None
 
@@ -524,6 +733,51 @@ def attach_pose_manager(window, pose_manager, debug: bool):
         raise RuntimeError("Selected TI demo class does not support pose manager attachment")
 
     demo_instance.setPoseManager(pose_manager)
+    if args.pose_human_models:
+        try:
+            from human_model_renderer import HumanPoseModelRenderer
+
+            renderer = HumanPoseModelRenderer(
+                getattr(demo_instance, "plot_3d"),
+                model_dir=resolve_project_path(args.pose_human_model_dir),
+                scale=args.pose_human_model_scale,
+                height_scale=args.pose_human_model_height_scale,
+                target_height=args.pose_human_model_target_height,
+                target_sitting_height=args.pose_human_model_target_sitting_height,
+                target_lying_length=args.pose_human_model_target_lying_length,
+                ground_z=args.pose_ground_z,
+                opacity=args.pose_human_model_opacity,
+                fallback=args.pose_human_model_fallback,
+                debug=args.pose_human_model_debug or debug,
+            )
+            demo_instance.setPoseHumanModelRenderer(
+                renderer,
+                mode=args.pose_human_model_mode,
+            )
+            debug_print(
+                debug or args.pose_human_model_debug,
+                f"human posture models attached: {resolve_project_path(args.pose_human_model_dir)}",
+            )
+        except Exception as exc:
+            print(
+                f"[human-model] disabled; keeping TI target boxes. Reason: {exc}",
+                flush=True,
+            )
+    if args.pose_ground_plane and hasattr(demo_instance, "setPoseGroundPlane"):
+        demo_instance.setPoseGroundPlane(
+            enabled=True,
+            ground_z=args.pose_ground_z,
+            size=args.pose_ground_plane_size,
+            grid=args.pose_ground_plane_grid,
+            alpha=args.pose_ground_plane_alpha,
+        )
+        debug_print(
+            debug or args.pose_debug,
+            "[ground-plane] enabled z={} size={}".format(
+                args.pose_ground_z,
+                args.pose_ground_plane_size,
+            ),
+        )
     atexit.register(pose_manager.close)
     debug_print(debug or getattr(pose_manager, "debug", False), "[pose-runtime] pose manager attached")
     debug_print(debug or getattr(pose_manager, "debug", False), f"pose manager attached to: {type(demo_instance).__name__}")
@@ -567,7 +821,7 @@ def main() -> int:
     size = screen.size() if screen is not None else []
     window = Window(size=size, title="Industrial Visualizer - TI Style (Vendored)")
     configure_window(window, args, demo_name, args.debug)
-    attach_pose_manager(window, pose_manager, args.debug)
+    attach_pose_manager(window, pose_manager, args, args.debug)
     window.show()
 
     auto_start_enabled = not args.no_auto_start and not args.demo

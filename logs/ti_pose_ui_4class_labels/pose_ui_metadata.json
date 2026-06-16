@@ -40,14 +40,16 @@
   "moving_speed_threshold": 0.18,
   "moving_confirm_frames": 3,
   "fall_height_drop_threshold": 0.35,
+  "min_associated_points_for_inference": 1,
+  "allow_target_only": false,
   "pose_3d_labels": true,
-  "pose_3d_label_format": "{tid} | {final_label}",
+  "pose_3d_label_format": "{tid} | {final_label} {confidence_percent}%",
   "pose_3d_label_z_offset": 0.35,
   "pose_3d_label_min_confidence": 0.45,
   "pose_3d_label_max_distance": null,
   "pose_3d_label_debug": false,
   "normalization_enabled": true,
   "scaler_path": "C:\\Users\\UBESC\\Desktop\\radar_toolbox_4_00_00_05\\custom_iwr6843_fall_logger\\model_experiments\\outputs\\ti_4class_clean_recording_robust_1600_fast\\feature_scaler.npz",
-  "date_time": "2026-06-12T14:25:37",
+  "date_time": "2026-06-16T10:30:05",
   "notes": "Model was trained on TI IWRL6432 Pose/Fall data. Live IWR6843 accuracy must be validated. MOVING is derived from speed, not from the ML class output."
 }

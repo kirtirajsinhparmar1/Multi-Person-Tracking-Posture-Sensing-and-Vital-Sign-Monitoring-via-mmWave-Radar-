@@ -69,6 +69,11 @@ class Plot3D():
         self.ellipsoids = []
         self.poseLabelItems = {}
         self.poseLabelsFailed = False
+        self.humanModelRenderer = None
+        self.humanModelMode = 'overlay_box'
+        self.humanModelsFailed = False
+        self.poseGroundPlaneItem = None
+        self.poseGroundGridItem = None
         self.plotComplete = 1
 
         self.zRange = [-3, 3]
@@ -84,6 +89,97 @@ class Plot3D():
         self.mpdZoneType = None
         self.snapTo2D = None
         self.modeSwitchLabel = None
+
+    def setHumanModelRenderer(self, renderer, mode='overlay_box'):
+        self.humanModelRenderer = renderer
+        self.humanModelMode = mode or 'overlay_box'
+        self.humanModelsFailed = False
+
+    def updateHumanPoseModels(self, model_records):
+        if self.humanModelRenderer is None or self.humanModelsFailed:
+            return
+        try:
+            self.humanModelRenderer.update_models(model_records or [])
+        except Exception as exc:
+            self.humanModelsFailed = True
+            log.warning("Human pose models disabled after update failure: %s", exc)
+            try:
+                self.humanModelRenderer.clear()
+            except Exception:
+                pass
+
+    def clearHumanPoseModels(self):
+        if self.humanModelRenderer is not None:
+            try:
+                self.humanModelRenderer.clear()
+            except Exception:
+                pass
+
+    def setPoseGroundPlane(self, enabled=True, ground_z=0.0, size=8.0, grid=True, alpha=0.18):
+        self.clearPoseGroundPlane()
+        if not enabled:
+            return
+        try:
+            half = float(size) * 0.5
+            y_max = float(size)
+            z = float(ground_z)
+            alpha = max(0.0, min(1.0, float(alpha)))
+            verts = np.array(
+                [
+                    [-half, 0.0, z],
+                    [half, 0.0, z],
+                    [half, y_max, z],
+                    [-half, y_max, z],
+                ],
+                dtype=float,
+            )
+            faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+            plane = gl.GLMeshItem(
+                vertexes=verts,
+                faces=faces,
+                smooth=False,
+                drawEdges=False,
+                drawFaces=True,
+                color=(0.22, 0.24, 0.27, alpha),
+            )
+            plane.setGLOptions('translucent')
+            self.plot_3d.addItem(plane)
+            self.poseGroundPlaneItem = plane
+
+            if grid:
+                grid_item = gl.GLGridItem()
+                try:
+                    grid_item.setSize(x=float(size), y=float(size), z=0.0)
+                    grid_item.setSpacing(x=0.5, y=0.5, z=0.5)
+                except TypeError:
+                    grid_item.setSize(float(size), float(size), 0.0)
+                    grid_item.setSpacing(0.5, 0.5, 0.5)
+                grid_item.translate(0.0, half, z + 0.002)
+                self.plot_3d.addItem(grid_item)
+                self.poseGroundGridItem = grid_item
+        except Exception as exc:
+            log.warning("Pose ground plane disabled after setup failure: %s", exc)
+            self.clearPoseGroundPlane()
+
+    def clearPoseGroundPlane(self):
+        for attr in ('poseGroundGridItem', 'poseGroundPlaneItem'):
+            item = getattr(self, attr, None)
+            if item is not None:
+                try:
+                    self.plot_3d.removeItem(item)
+                except Exception:
+                    try:
+                        item.setVisible(False)
+                    except Exception:
+                        pass
+                setattr(self, attr, None)
+
+    def setTargetBoxesVisible(self, visible):
+        for item in getattr(self, 'ellipsoids', []):
+            try:
+                item.setVisible(bool(visible))
+            except Exception:
+                pass
 
     def updatePoseLabels(self, label_records):
         if self.poseLabelsFailed:
