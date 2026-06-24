@@ -1,0 +1,18 @@
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+
+# Runtime captures and generated diagnostics
+logs/
+
+# Common local environments and test caches
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Local editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

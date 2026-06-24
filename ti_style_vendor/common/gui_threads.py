@@ -71,7 +71,7 @@ class sendCommandThread(QThread):
 class updateQTTargetThread3D(QThread):
     done = Signal()
 
-    def __init__(self, pointCloud, targets, scatter, pcplot, numTargets, ellipsoids, coords, demo=None, colorGradient=None, classifierOut=[], zRange=[-3, 3], pointColorMode="", drawTracks=True, trackColorMap=None, pointBounds={'enabled': False}, clusterLocs = None):
+    def __init__(self, pointCloud, targets, scatter, pcplot, numTargets, ellipsoids, coords, demo=None, colorGradient=None, classifierOut=[], zRange=[-3, 3], pointColorMode="", drawTracks=True, trackColorMap=None, pointBounds={'enabled': False}, clusterLocs = None, trackBoxBounds=None):
         QThread.__init__(self)
         self.pointCloud = pointCloud
         self.targets = targets
@@ -90,6 +90,7 @@ class updateQTTargetThread3D(QThread):
         self.trackColorMap = trackColorMap
         self.pointBounds = pointBounds
         self.demo = demo
+        self.trackBoxBounds = trackBoxBounds or {}
         # This ignores divide by 0 errors when calculating the log2
         np.seterr(divide = 'ignore')
 
@@ -100,7 +101,13 @@ class updateQTTargetThread3D(QThread):
         y = track[2]
         z = track[3]
         track = self.ellipsoids[tid]
-        mesh = getBoxLinesCoords(x,y,z)
+        bounds = self.trackBoxBounds.get(tid)
+        if bounds is not None and len(bounds) == 6 and np.all(np.isfinite(bounds)):
+            # Overlay boxes use the actual scaled mesh bounds, so the box and
+            # model share target X/Y, posture dimensions, and ground contact.
+            mesh = getBoxLines(*bounds)
+        else:
+            mesh = getBoxLinesCoords(x,y,z)
         track.setData(pos=mesh,color=trackColor,width=2,antialias=True,mode='lines')
         track.setVisible(True)
     def drawTrackDynamic(self, track, trackColor):

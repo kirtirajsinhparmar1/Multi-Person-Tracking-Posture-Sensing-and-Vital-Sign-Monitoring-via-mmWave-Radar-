@@ -23,6 +23,7 @@ import numpy as np
 
 import pose_feature_extractor as features
 from pose_model_runtime import CLASS_NAMES as DEFAULT_CLASS_NAMES, PoseModelRuntime, PoseSmoother
+from vital_signs_runtime import VitalSignsManager
 
 
 UNASSOCIATED_TRACK_INDEXES = {253, 254, 255}
@@ -69,6 +70,14 @@ class TiStylePoseManager:
         human_model_target_height: float = 1.70,
         human_model_target_sitting_height: float = 1.20,
         human_model_target_lying_length: float = 1.70,
+        vitals_enable_gate: bool = False,
+        vitals_required_posture: str = "SITTING",
+        vitals_sitting_stable_frames: int = 30,
+        vitals_max_horizontal_speed: float = 0.08,
+        vitals_min_pose_confidence: float = 0.60,
+        vitals_grace_frames: int = 15,
+        vitals_reset_when_not_sitting: bool = True,
+        vitals_labels: bool = False,
         debug: bool = False,
         log_dir=None,
         cfg_path=None,
@@ -127,6 +136,17 @@ class TiStylePoseManager:
         self.human_model_target_height = float(human_model_target_height)
         self.human_model_target_sitting_height = float(human_model_target_sitting_height)
         self.human_model_target_lying_length = float(human_model_target_lying_length)
+        self.vitals_labels = bool(vitals_labels)
+        self.vitals_manager = VitalSignsManager(
+            enabled=vitals_enable_gate,
+            required_posture=vitals_required_posture,
+            sitting_stable_frames=vitals_sitting_stable_frames,
+            max_horizontal_speed=vitals_max_horizontal_speed,
+            min_pose_confidence=vitals_min_pose_confidence,
+            grace_frames=vitals_grace_frames,
+            reset_when_not_sitting=vitals_reset_when_not_sitting,
+            debug=debug,
+        )
         self.debug = bool(debug)
         self.model_path = str(Path(model_path).expanduser().resolve())
         self.last_seen_frame: dict[int, int] = {}
@@ -158,6 +178,23 @@ class TiStylePoseManager:
             return {}
 
         frame_num = _int_value(output_dict.get("frameNum"), 0)
+        # A nonzero parser status does not invalidate fields that were decoded
+        # successfully. In particular, preserve valid target and TLV 1040 data.
+        parser_error = output_dict.get("error")
+        if (
+            self.debug
+            and parser_error not in (None, 0)
+            and (
+                output_dict.get("trackData") is not None
+                or output_dict.get("vitals") is not None
+            )
+        ):
+            print(
+                f"[pose] frame={frame_num} parser_error={parser_error}; "
+                "processing available targets/vitals",
+                flush=True,
+            )
+        self.vitals_manager.update_from_frame(output_dict)
         tracks = _rows(output_dict.get("trackData"))
         points = _rows(output_dict.get("pointCloud"))
         target_heights = _height_by_tid(output_dict.get("heightData"))
@@ -330,6 +367,9 @@ class TiStylePoseManager:
                 "vz": vz,
                 "frame": frame_num,
             }
+            result.update(
+                self.vitals_manager.update_eligibility(tid, result, frame_num)
+            )
             results[tid] = result
 
         self._reset_stale_tracks(frame_num, seen_tids)
@@ -358,6 +398,7 @@ class TiStylePoseManager:
         self.probability_history.pop(tid_int, None)
         self.position_history.pop(tid_int, None)
         self.velocity_history.pop(tid_int, None)
+        self.vitals_manager.reset_tid(tid_int)
 
     def reset_all(self) -> None:
         features.reset_all()
@@ -373,6 +414,7 @@ class TiStylePoseManager:
         self.probability_history.clear()
         self.position_history.clear()
         self.velocity_history.clear()
+        self.vitals_manager.reset_all()
 
     def get_3d_label_records(self, track_data=None, height_data=None) -> list[dict]:
         if not self.enable_3d_labels:
@@ -491,9 +533,11 @@ class TiStylePoseManager:
         confidence_percent = _percent_text(confidence)
         window_count = int(pose.get("window_count", pose.get("window_age", 0)) or 0)
         if final_label == "WARMUP" or not pose.get("window_ready", False):
-            return f"{tid} | WARMUP {window_count}/8"
+            return self._append_vitals_label(
+                f"{tid} | WARMUP {window_count}/8", pose
+            )
         if final_label == "NO_POSE" or not pose.get("prediction_exists", False):
-            return f"{tid} | NO POSE"
+            return self._append_vitals_label(f"{tid} | NO POSE", pose)
         display_status = str(pose.get("display_status", ""))
         stability_count = int(pose.get("display_stability_count", 0) or 0)
         stability_required = int(
@@ -501,11 +545,12 @@ class TiStylePoseManager:
         )
         if self.label_debug:
             fall_ok = str(bool(pose.get("fall_gate_passed", False))).lower()
-            return (
+            text = (
                 f"{tid} | {final_label} {confidence_percent}%\n"
                 f"Cand:{candidate_label} Stable:{stability_count}/{stability_required} "
                 f"FallOK:{fall_ok} Q:{quality}"
             )
+            return self._append_vitals_label(text, pose)
         if display_status == "PENDING" and candidate_label != final_label:
             text = (
                 f"{tid} | {final_label} -> {candidate_label} "
@@ -513,7 +558,7 @@ class TiStylePoseManager:
             )
             if quality != "OK":
                 text = f"{text} *"
-            return text
+            return self._append_vitals_label(text, pose)
 
         values = {
             "tid": tid,
@@ -536,6 +581,25 @@ class TiStylePoseManager:
             text = f"{tid} | {final_label} {confidence_percent}%"
         if quality != "OK":
             text = f"{text} *"
+        return self._append_vitals_label(text, pose)
+
+    def _append_vitals_label(self, text: str, pose: dict) -> str:
+        if not self.vitals_labels:
+            return text
+        state = str(pose.get("vitals_state", "DISABLED"))
+        breath = pose.get("breathing_rate_bpm")
+        heart = pose.get("heart_rate_bpm")
+        if state == "ACTIVE" and (breath is not None or heart is not None):
+            parts = []
+            if breath is not None:
+                parts.append(f"BR {float(breath):.1f}")
+            if heart is not None:
+                parts.append(f"HR {float(heart):.1f}")
+            return f"{text}\n{' '.join(parts)}"
+        if state == "WAITING_FOR_SITTING":
+            return f"{text}\nVitals: sit required"
+        if state != "DISABLED":
+            return f"{text}\nVitals: {state}"
         return text
 
     def _track_to_target(self, track: list[float]) -> dict[str, float]:
@@ -1043,6 +1107,23 @@ class TiStylePoseManager:
             "stability_required",
             "stability_ratio",
             "motion_state",
+            "pose_confidence",
+            "sitting_stable_count",
+            "vitals_eligible",
+            "vitals_state",
+            "vitals_state_reason",
+            "vitals_source_id",
+            "mapped_tid",
+            "rangeBin",
+            "breathRate",
+            "heartRate",
+            "breathDeviation",
+            "vitals_mapping_mode",
+            "breathing_rate_bpm",
+            "heart_rate_bpm",
+            "vitals_quality",
+            "vitals_source",
+            "vitals_elapsed_sec",
             "model_asset_used",
             "model_scale",
             "ground_z",
@@ -1096,13 +1177,30 @@ class TiStylePoseManager:
             "human_model_target_height": self.human_model_target_height,
             "human_model_target_sitting_height": self.human_model_target_sitting_height,
             "human_model_target_lying_length": self.human_model_target_lying_length,
+            "vitals_gate_enabled": self.vitals_manager.gate.enabled,
+            "vitals_required_posture": self.vitals_manager.gate.required_posture,
+            "vitals_sitting_stable_frames": (
+                self.vitals_manager.gate.sitting_stable_frames
+            ),
+            "vitals_max_horizontal_speed": (
+                self.vitals_manager.gate.max_horizontal_speed
+            ),
+            "vitals_min_pose_confidence": (
+                self.vitals_manager.gate.min_pose_confidence
+            ),
+            "vitals_grace_frames": self.vitals_manager.gate.grace_frames,
+            "vitals_reset_when_not_sitting": (
+                self.vitals_manager.gate.reset_when_not_sitting
+            ),
             "normalization_enabled": bool(getattr(self.model, "normalization_enabled", False)),
             "scaler_path": str(getattr(self.model, "scaler_path", "") or ""),
             "date_time": datetime.now().isoformat(timespec="seconds"),
             "notes": (
                 "Model was trained on TI IWRL6432 Pose/Fall data. "
                 "Live IWR6843 accuracy must be validated. MOVING is derived "
-                "from speed, not from the ML class output."
+                "from speed, not from the ML class output. Vital rates are "
+                "never synthesized; they remain empty unless a real TI vital "
+                "sign TLV is present."
             ),
         }
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -1164,6 +1262,27 @@ class TiStylePoseManager:
                     "stability_required": item.get("stability_required", item.get("display_stability_required", self.display_stability_frames)),
                     "stability_ratio": item.get("stability_ratio", item.get("display_stability_ratio", 0.0)),
                     "motion_state": item["motion_state"],
+                    "pose_confidence": item.get(
+                        "displayed_confidence", item.get("final_confidence", 0.0)
+                    ),
+                    "sitting_stable_count": item.get("sitting_stable_count", 0),
+                    "vitals_eligible": item.get("vitals_eligible", False),
+                    "vitals_state": item.get("vitals_state", "DISABLED"),
+                    "vitals_state_reason": item.get("vitals_state_reason", ""),
+                    "vitals_source_id": item.get("vitals_source_id", ""),
+                    "mapped_tid": item.get("mapped_tid", item.get("tid", "")),
+                    "rangeBin": item.get("rangeBin", ""),
+                    "breathRate": item.get("breathRate", ""),
+                    "heartRate": item.get("heartRate", ""),
+                    "breathDeviation": item.get("breathDeviation", ""),
+                    "vitals_mapping_mode": item.get(
+                        "vitals_mapping_mode", "id_equals_tid"
+                    ),
+                    "breathing_rate_bpm": item.get("breathing_rate_bpm", ""),
+                    "heart_rate_bpm": item.get("heart_rate_bpm", ""),
+                    "vitals_quality": item.get("vitals_quality", ""),
+                    "vitals_source": item.get("vitals_source", ""),
+                    "vitals_elapsed_sec": item.get("vitals_elapsed_sec", 0.0),
                     "model_asset_used": item.get("model_asset_used", ""),
                     "model_scale": item.get("model_scale", ""),
                     "ground_z": item.get("ground_z", self.ground_z),

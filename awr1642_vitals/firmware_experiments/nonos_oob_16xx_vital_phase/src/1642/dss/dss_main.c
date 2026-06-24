@@ -814,6 +814,43 @@ void MmwDemo_mboxCallback(
 }
 
 #if AWR1642_VITAL_PHASE_FAKE_TLV
+#define VITAL_PHASE_MODE_FAKE            0U
+#define VITAL_PHASE_MODE_REAL_FIXED_BIN  1U
+#define VITAL_PHASE_MODE_REAL_MAX_BIN    2U
+
+/* Fake mode is the known-good default. Select a real mode explicitly at
+ * compile time only after the existing 0xFE01 TLV path has been verified.
+ */
+#ifndef VITAL_PHASE_MODE
+#define VITAL_PHASE_MODE VITAL_PHASE_MODE_FAKE
+#endif
+
+#if (VITAL_PHASE_MODE == VITAL_PHASE_MODE_REAL_FIXED_BIN)
+#ifndef VITAL_PHASE_FIXED_RANGE_BIN
+#error "Define VITAL_PHASE_FIXED_RANGE_BIN for real fixed-bin vital phase mode"
+#endif
+#endif
+
+#ifndef VITAL_PHASE_WINDOW_START_BIN
+#define VITAL_PHASE_WINDOW_START_BIN 20U
+#endif
+
+#ifndef VITAL_PHASE_WINDOW_NUM_BINS
+#define VITAL_PHASE_WINDOW_NUM_BINS 41U
+#endif
+
+#ifndef VITAL_PHASE_FE03_ENABLE
+#define VITAL_PHASE_FE03_ENABLE 1U
+#endif
+
+#ifndef VITAL_PHASE_FE03_START_BIN
+#define VITAL_PHASE_FE03_START_BIN 20U
+#endif
+
+#ifndef VITAL_PHASE_FE03_NUM_BINS
+#define VITAL_PHASE_FE03_NUM_BINS 41U
+#endif
+
 #define MMWDEMO_VITAL_PI                 3.14159265358979323846f
 #define MMWDEMO_VITAL_TWO_PI             6.28318530717958647692f
 #define MMWDEMO_VITAL_FAKE_FRAME_RATE_HZ 20.0f
@@ -876,6 +913,230 @@ static void MmwDemo_fillFakeVitalPhaseTrace(
     trace->snrLike            = 30.0f;
     trace->motionDetected     = 0U;
 }
+
+static void MmwDemo_fillVitalPhaseTrace(
+    VitalPhaseTrace          *trace,
+    MmwDemo_DSS_DataPathObj  *obj,
+    uint32_t                  frameNumber)
+{
+#if (VITAL_PHASE_MODE == VITAL_PHASE_MODE_REAL_FIXED_BIN)
+    uint32_t          rangeBin = (uint32_t)VITAL_PHASE_FIXED_RANGE_BIN;
+    uint32_t          sampleIndex;
+    cmplx16ImRe_t     sample;
+    float             iValue;
+    float             qValue;
+
+    /* Real fixed-bin mode reads the phase-compensated, zero-Doppler complex
+     * sample retained in azimuthStaticHeatMap after inter-frame processing.
+     * For profile_2d.cfg, 1.5 m is approximately bin 32 because nominal range
+     * resolution is about 0.04739 m/bin. The real PC reader must use --fs 10,
+     * not --fs 20, because frameCfg has a 100 ms period.
+     */
+    if ((obj->azimuthStaticHeatMap == NULL) ||
+        (obj->numVirtualAntAzim == 0U) ||
+        (rangeBin >= obj->numRangeBins))
+    {
+        /* Preserve a valid, known-good TLV if the requested real sample is
+         * unavailable or outside the configured range FFT.
+         */
+        MmwDemo_fillFakeVitalPhaseTrace(trace, frameNumber);
+        return;
+    }
+
+    sampleIndex = rangeBin * obj->numVirtualAntAzim;
+    sample      = obj->azimuthStaticHeatMap[sampleIndex];
+    iValue      = (float)sample.real;
+    qValue      = (float)sample.imag;
+
+    memset((void *)trace, 0, sizeof(VitalPhaseTrace));
+    trace->frameNumber        = frameNumber;
+    trace->rangeBinIndexMax   = rangeBin;
+    trace->rangeBinIndexPhase = rangeBin;
+    trace->rangeMeters        = (float)rangeBin * obj->rangeResolution;
+    trace->iValue             = iValue;
+    trace->qValue             = qValue;
+    trace->phaseRad           = atan2sp(qValue, iValue);
+    trace->magnitude          = sqrtsp((iValue * iValue) + (qValue * qValue));
+    trace->snrLike            = 0.0f;
+    trace->motionDetected     = 0U;
+#elif (VITAL_PHASE_MODE == VITAL_PHASE_MODE_REAL_MAX_BIN)
+    /* Reserved for a later bounded and hysteretic max-energy selector.
+     * Fall back to the verified fake path until that selection is implemented.
+     */
+    MmwDemo_fillFakeVitalPhaseTrace(trace, frameNumber);
+#else
+    MmwDemo_fillFakeVitalPhaseTrace(trace, frameNumber);
+#endif
+}
+
+static uint32_t MmwDemo_fillVitalPhaseBinWindow(
+    uint8_t                  *payload,
+    uint32_t                  payloadCapacity,
+    MmwDemo_DSS_DataPathObj  *obj,
+    uint32_t                  frameNumber)
+{
+    uint32_t                       startBin = (uint32_t)VITAL_PHASE_WINDOW_START_BIN;
+    uint32_t                       numBins  = (uint32_t)VITAL_PHASE_WINDOW_NUM_BINS;
+    uint32_t                       payloadLen;
+    uint32_t                       sampleIndex;
+    uint32_t                       windowIndex;
+    VitalPhaseBinWindowHeader     *header;
+    VitalPhaseBinSample           *samples;
+
+    if ((payload == NULL) ||
+        (obj->azimuthStaticHeatMap == NULL) ||
+        (obj->numVirtualAntAzim == 0U))
+    {
+        return 0U;
+    }
+
+    if (startBin > obj->numRangeBins)
+    {
+        startBin = obj->numRangeBins;
+    }
+    if (numBins > ((uint32_t)obj->numRangeBins - startBin))
+    {
+        numBins = (uint32_t)obj->numRangeBins - startBin;
+    }
+    if (numBins == 0U)
+    {
+        return 0U;
+    }
+
+    payloadLen = sizeof(VitalPhaseBinWindowHeader) +
+        (numBins * sizeof(VitalPhaseBinSample));
+    if (payloadLen > payloadCapacity)
+    {
+        return 0U;
+    }
+
+    header                  = (VitalPhaseBinWindowHeader *)payload;
+    header->frameNumber     = frameNumber;
+    header->startBin        = (uint16_t)startBin;
+    header->numBins         = (uint16_t)numBins;
+    header->rangeResolution = obj->rangeResolution;
+    samples = (VitalPhaseBinSample *)
+        &payload[sizeof(VitalPhaseBinWindowHeader)];
+
+    /* Export zero-Doppler complex samples from virtual azimuth antenna zero.
+     * Range-bin selection and person association remain PC-side operations.
+     */
+    for (windowIndex = 0U; windowIndex < numBins; windowIndex++)
+    {
+        uint32_t      rangeBin = startBin + windowIndex;
+        cmplx16ImRe_t complexSample;
+        float         iValue;
+        float         qValue;
+
+        sampleIndex   = rangeBin * obj->numVirtualAntAzim;
+        complexSample = obj->azimuthStaticHeatMap[sampleIndex];
+        iValue        = (float)complexSample.real;
+        qValue        = (float)complexSample.imag;
+
+        samples[windowIndex].binIndex    = (uint16_t)rangeBin;
+        samples[windowIndex].reserved    = 0U;
+        samples[windowIndex].rangeMeters = (float)rangeBin * obj->rangeResolution;
+        samples[windowIndex].iValue      = iValue;
+        samples[windowIndex].qValue      = qValue;
+        samples[windowIndex].phaseRad    = atan2sp(qValue, iValue);
+        samples[windowIndex].magnitude   =
+            sqrtsp((iValue * iValue) + (qValue * qValue));
+    }
+
+    return payloadLen;
+}
+
+#if VITAL_PHASE_FE03_ENABLE
+static uint32_t MmwDemo_fillVitalPhaseVirtualAntWindow(
+    uint8_t                  *payload,
+    uint32_t                  payloadCapacity,
+    MmwDemo_DSS_DataPathObj  *obj,
+    uint32_t                  frameNumber)
+{
+    uint32_t startBin = (uint32_t)VITAL_PHASE_FE03_START_BIN;
+    uint32_t numBins  = (uint32_t)VITAL_PHASE_FE03_NUM_BINS;
+    uint32_t numVirtualAntennas;
+    uint32_t payloadLen;
+    uint32_t sampleCapacity;
+    uint32_t windowIndex;
+    uint32_t antennaIndex;
+    VitalPhaseVirtualAntWindowHeader *header;
+    VitalPhaseVirtualAntSample *samples;
+
+    if ((payload == NULL) ||
+        (obj->azimuthStaticHeatMap == NULL) ||
+        (obj->numVirtualAntAzim == 0U))
+    {
+        return 0U;
+    }
+
+    if (startBin > obj->numRangeBins)
+    {
+        startBin = obj->numRangeBins;
+    }
+    if (numBins > ((uint32_t)obj->numRangeBins - startBin))
+    {
+        numBins = (uint32_t)obj->numRangeBins - startBin;
+    }
+    if (numBins == 0U)
+    {
+        return 0U;
+    }
+
+    numVirtualAntennas = (uint32_t)obj->numVirtualAntAzim;
+    if (payloadCapacity < sizeof(VitalPhaseVirtualAntWindowHeader))
+    {
+        return 0U;
+    }
+    sampleCapacity =
+        (payloadCapacity - sizeof(VitalPhaseVirtualAntWindowHeader)) /
+        sizeof(VitalPhaseVirtualAntSample);
+    if ((numVirtualAntennas > sampleCapacity) ||
+        (numBins > (sampleCapacity / numVirtualAntennas)))
+    {
+        return 0U;
+    }
+    payloadLen = sizeof(VitalPhaseVirtualAntWindowHeader) +
+        (numBins * numVirtualAntennas *
+         sizeof(VitalPhaseVirtualAntSample));
+
+    header                     = (VitalPhaseVirtualAntWindowHeader *)payload;
+    header->frameNumber        = frameNumber;
+    header->startBin           = (uint16_t)startBin;
+    header->numBins            = (uint16_t)numBins;
+    header->numVirtualAntennas = (uint16_t)numVirtualAntennas;
+    header->flags              = 0U;
+    header->rangeResolution    = obj->rangeResolution;
+    samples = (VitalPhaseVirtualAntSample *)
+        &payload[sizeof(VitalPhaseVirtualAntWindowHeader)];
+
+    /* FE03 exports raw zero-Doppler complex samples in row-major order:
+     * [range-window index][virtual azimuth antenna index]. Angle processing,
+     * chest-guided beam selection, phase, and magnitude remain PC-side.
+     */
+    for (windowIndex = 0U; windowIndex < numBins; windowIndex++)
+    {
+        uint32_t rangeBin = startBin + windowIndex;
+
+        for (antennaIndex = 0U;
+             antennaIndex < numVirtualAntennas;
+             antennaIndex++)
+        {
+            uint32_t outputIndex =
+                (windowIndex * numVirtualAntennas) + antennaIndex;
+            uint32_t heatMapIndex =
+                (rangeBin * numVirtualAntennas) + antennaIndex;
+            cmplx16ImRe_t complexSample =
+                obj->azimuthStaticHeatMap[heatMapIndex];
+
+            samples[outputIndex].iValue = complexSample.real;
+            samples[outputIndex].qValue = complexSample.imag;
+        }
+    }
+
+    return payloadLen;
+}
+#endif
 #endif
 
 /**
@@ -1101,7 +1362,9 @@ int32_t MmwDemo_dssSendProcessOutputToMSS(
             goto Exit;
         }
 
-        MmwDemo_fillFakeVitalPhaseTrace(&vitalPhase, gMmwDssMCB.stats.frameStartIntCounter);
+        MmwDemo_fillVitalPhaseTrace(&vitalPhase,
+                                    obj,
+                                    gMmwDssMCB.stats.frameStartIntCounter);
         memcpy(ptrCurrBuffer, (void *)&vitalPhase, itemPayloadLen);
 
         message.body.detObj.tlv[tlvIdx].length  = itemPayloadLen;
@@ -1112,6 +1375,69 @@ int32_t MmwDemo_dssSendProcessOutputToMSS(
         ptrCurrBuffer = (uint8_t *)((uint32_t)ptrHsmBuffer + totalHsmSize);
         totalPacketLen += sizeof(MmwDemo_output_message_tl) + itemPayloadLen;
     }
+
+    /* Append a real complex range-bin window after the unchanged 0xFE01 TLV.
+     * Omit only this additional TLV if its descriptor or HSRAM space is not
+     * available; the existing output packet remains valid.
+     */
+    if ((tlvIdx < MMWDEMO_OUTPUT_MSG_MAX_TLVS) &&
+        (totalHsmSize < outputBufSize))
+    {
+        uint32_t remainingHsmSize = outputBufSize - totalHsmSize;
+
+        itemPayloadLen = MmwDemo_fillVitalPhaseBinWindow(
+            ptrCurrBuffer,
+            remainingHsmSize,
+            obj,
+            gMmwDssMCB.stats.frameStartIntCounter);
+
+        if (itemPayloadLen > 0U)
+        {
+            totalHsmSize += itemPayloadLen;
+            message.body.detObj.tlv[tlvIdx].length  = itemPayloadLen;
+            message.body.detObj.tlv[tlvIdx].type    =
+                MMWDEMO_OUTPUT_MSG_VITAL_PHASE_BIN_WINDOW;
+            message.body.detObj.tlv[tlvIdx].address = (uint32_t)ptrCurrBuffer;
+            tlvIdx++;
+
+            ptrCurrBuffer = (uint8_t *)((uint32_t)ptrHsmBuffer + totalHsmSize);
+            totalPacketLen += sizeof(MmwDemo_output_message_tl) + itemPayloadLen;
+        }
+    }
+
+#if VITAL_PHASE_FE03_ENABLE
+    /* Append all virtual-azimuth-antenna I/Q samples for the range window.
+     * A zero return means the configured range is empty or the remaining
+     * HSRAM is insufficient. FE01 and FE02 remain present and valid.
+     */
+    if ((tlvIdx < MMWDEMO_OUTPUT_MSG_MAX_TLVS) &&
+        (totalHsmSize < outputBufSize))
+    {
+        uint32_t remainingHsmSize = outputBufSize - totalHsmSize;
+
+        itemPayloadLen = MmwDemo_fillVitalPhaseVirtualAntWindow(
+            ptrCurrBuffer,
+            remainingHsmSize,
+            obj,
+            gMmwDssMCB.stats.frameStartIntCounter);
+
+        if (itemPayloadLen > 0U)
+        {
+            totalHsmSize += itemPayloadLen;
+            message.body.detObj.tlv[tlvIdx].length  = itemPayloadLen;
+            message.body.detObj.tlv[tlvIdx].type    =
+                MMWDEMO_OUTPUT_MSG_VITAL_PHASE_VIRTUAL_ANT_WINDOW;
+            message.body.detObj.tlv[tlvIdx].address =
+                (uint32_t)ptrCurrBuffer;
+            tlvIdx++;
+
+            ptrCurrBuffer =
+                (uint8_t *)((uint32_t)ptrHsmBuffer + totalHsmSize);
+            totalPacketLen +=
+                sizeof(MmwDemo_output_message_tl) + itemPayloadLen;
+        }
+    }
+#endif
 #endif
 
     if (retVal == 0)

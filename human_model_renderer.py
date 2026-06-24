@@ -120,6 +120,7 @@ class HumanPoseModelRenderer:
         self.meshes: dict[str, ObjMesh] = {}
         self.model_scales: dict[str, float] = {}
         self.items: dict[int, dict[str, Any]] = {}
+        self.world_bounds: dict[int, tuple[float, float, float, float, float, float]] = {}
         self.disabled = False
         self._warned = False
         self._load_meshes()
@@ -158,6 +159,13 @@ class HumanPoseModelRenderer:
                 item.translate(x, y, z)
                 item.setVisible(True)
                 active_tids.add(tid)
+                self.world_bounds[tid] = _mesh_world_bounds(
+                    mesh,
+                    scale=scale,
+                    x=x,
+                    y=y,
+                    ground_z=z,
+                )
 
                 if self.debug:
                     print(
@@ -176,12 +184,16 @@ class HumanPoseModelRenderer:
             for tid in list(self.items):
                 if tid not in active_tids:
                     self._hide_tid(tid)
+            for tid in list(self.world_bounds):
+                if tid not in active_tids:
+                    self.world_bounds.pop(tid, None)
         except Exception as exc:
             self.disabled = True
             self._warn_once(f"human model rendering disabled after failure: {exc}")
             self.clear()
 
     def clear(self) -> None:
+        self.world_bounds.clear()
         for entry in self.items.values():
             try:
                 entry["item"].setVisible(False)
@@ -293,12 +305,17 @@ class HumanPoseModelRenderer:
         return scale
 
     def _hide_tid(self, tid: int) -> None:
+        self.world_bounds.pop(int(tid), None)
         entry = self.items.get(int(tid))
         if entry is not None:
             try:
                 entry["item"].setVisible(False)
             except Exception:
                 pass
+
+    def get_world_bounds(self) -> dict[int, tuple[float, float, float, float, float, float]]:
+        """Return active mesh bounds as (xl, yl, zl, xr, yr, zr) by target ID."""
+        return dict(self.world_bounds)
 
     def _color_for_label(self, label, quality):
         alpha = self.opacity
@@ -321,3 +338,31 @@ class HumanPoseModelRenderer:
         if not self._warned:
             print(f"[human-model] {message}", flush=True)
             self._warned = True
+
+
+def _mesh_world_bounds(
+    mesh: ObjMesh,
+    *,
+    scale: float,
+    x: float,
+    y: float,
+    ground_z: float,
+    padding: float = 0.05,
+) -> tuple[float, float, float, float, float, float]:
+    """Map normalized OBJ bounds into the TI plot coordinate system.
+
+    OBJ loading centers the mesh in X/Y and moves its minimum Z to zero.
+    The target box and mesh therefore share tracked X/Y, while their bottoms
+    share the configured ground plane.
+    """
+    mins = np.min(mesh.vertices, axis=0) * float(scale)
+    maxs = np.max(mesh.vertices, axis=0) * float(scale)
+    pad = max(0.0, float(padding))
+    return (
+        float(x + mins[0] - pad),
+        float(y + mins[1] - pad),
+        float(ground_z + mins[2]),
+        float(x + maxs[0] + pad),
+        float(y + maxs[1] + pad),
+        float(ground_z + maxs[2] + pad),
+    )

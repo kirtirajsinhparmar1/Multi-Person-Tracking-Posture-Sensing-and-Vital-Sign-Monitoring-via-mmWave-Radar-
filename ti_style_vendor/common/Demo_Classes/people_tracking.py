@@ -49,6 +49,18 @@ def _pose_percent_text(confidence):
     return '{:.1f}%'.format(percent)
 
 
+def _vital_rate_text(value):
+    if value is None or value == '':
+        return '-'
+    try:
+        rate = float(value)
+    except Exception:
+        return '-'
+    if not np.isfinite(rate) or rate <= 0:
+        return '-'
+    return '{:.1f}'.format(rate)
+
+
 class DisabledGLTextItem:
     # TODO: Replace disabled GL text with a Qt 2D overlay label layer for PySide6.
     def setGLViewWidget(self, *_args, **_kwargs):
@@ -92,6 +104,7 @@ class PeopleTracking(Plot3D, Plot1D):
         self.poseTable = None
         self.poseHumanModelsEnabled = False
         self.poseHumanModelMode = 'overlay_box'
+        self.poseHumanModelBounds = {}
 
     def setupGUI(self, gridLayout, demoTabs, device):
         # Init setup pane on left hand side
@@ -202,14 +215,32 @@ class PeopleTracking(Plot3D, Plot1D):
                                 self.coordStr[tid].setVisible(True)
                                 break
                 self.updatePose3DLabels(tracks, outputDict.get('heightData'))
-                self.updatePoseHumanModels(tracks, outputDict.get('heightData'))
+                self.poseHumanModelBounds = self.updatePoseHumanModels(
+                    tracks, outputDict.get('heightData')
+                )
             else:
                 tracks = None
                 self.updatePose3DLabels([], None)
-                self.updatePoseHumanModels([], None)
+                self.poseHumanModelBounds = self.updatePoseHumanModels([], None)
             if (self.plotComplete):
                 self.plotStart = int(round(time.time()*1000))
-                self.plot_3d_thread = updateQTTargetThread3D(self.cumulativeCloud, tracks, self.scatter, self.plot_3d, 0, self.ellipsoids, "", colorGradient=self.colorGradient, pointColorMode=self.pointColorMode.currentText(), trackColorMap=self.trackColorMap)
+                self.plot_3d_thread = updateQTTargetThread3D(
+                    self.cumulativeCloud,
+                    tracks,
+                    self.scatter,
+                    self.plot_3d,
+                    0,
+                    self.ellipsoids,
+                    "",
+                    colorGradient=self.colorGradient,
+                    pointColorMode=self.pointColorMode.currentText(),
+                    trackColorMap=self.trackColorMap,
+                    trackBoxBounds=(
+                        self.poseHumanModelBounds
+                        if self.poseHumanModelMode == 'overlay_box'
+                        else None
+                    ),
+                )
                 self.plotComplete = 0
                 self.plot_3d_thread.done.connect(lambda: self.graphDone(outputDict))
                 self.plot_3d_thread.start(priority=QThread.HighPriority)
@@ -319,39 +350,40 @@ class PeopleTracking(Plot3D, Plot1D):
     def updatePoseHumanModels(self, tracks, heightData):
         if not self.poseHumanModelsEnabled or self.poseManager is None:
             self.clearHumanPoseModels()
-            return
+            return {}
         try:
             model_records = self.poseManager.get_3d_model_records(
                 track_data=tracks,
                 height_data=heightData,
             )
-            self.updateHumanPoseModels(model_records)
+            bounds = self.updateHumanPoseModels(model_records)
             if self.poseHumanModelMode in ('replace_box', 'model_only'):
                 self.setTargetBoxesVisible(False)
             elif self.poseHumanModelMode == 'overlay_box':
                 self.setTargetBoxesVisible(True)
+            return bounds or {}
         except Exception:
             log.exception("Failed to update human pose models")
             self.clearHumanPoseModels()
             self.setTargetBoxesVisible(True)
+            return {}
 
     def initPosePane(self):
         poseBox = QGroupBox('Live Posture / Pose')
         layout = QVBoxLayout()
         self.poseStatus = QLabel('Pose model disabled')
-        self.poseTable = QTableWidget(0, 11)
+        self.poseTable = QTableWidget(0, 10)
         self.poseTable.setHorizontalHeaderLabels([
             'TID',
-            'Displayed',
-            'Candidate',
-            'MLTop',
-            'Conf',
+            'Pose',
+            'PoseConf',
             'Motion',
+            'VitalsState',
+            'Breath',
+            'Heart',
+            'VitalsQuality',
+            'SittingStable',
             'Speed',
-            'HeightDrop',
-            'Stable',
-            'Quality',
-            'Window',
         ])
         self.poseTable.verticalHeader().setVisible(False)
         try:
@@ -391,49 +423,37 @@ class PeopleTracking(Plot3D, Plot1D):
             ready = bool(pose.get('window_ready', False))
             if ready:
                 displayed_label = str(pose.get('displayed_label', pose.get('final_label', '')))
-                candidate_label = str(pose.get('candidate_label', pose.get('smoothed_label', '')))
-                ml_top_label = str(pose.get('ml_top_label', pose.get('smoothed_label', '')))
                 confidence = _pose_percent_text(
                     pose.get('displayed_confidence', pose.get('final_confidence', 0.0))
                 )
             else:
                 displayed_label = 'WARMUP'
-                candidate_label = 'warmup {}/8'.format(window_age)
-                ml_top_label = '-'
                 confidence = '-'
 
-            quality = str(pose.get('quality', 'OK'))
-            if not quality:
-                quality = 'OK'
-
-            stable_count = int(pose.get('display_stability_count', 0))
-            stable_required = int(pose.get('display_stability_required', 16))
-            stable_text = '{}/{}'.format(stable_count, stable_required)
-            display_status = str(pose.get('display_status', ''))
-            if display_status:
-                stable_text = '{} {}'.format(stable_text, display_status)
+            vitals_state = str(pose.get('vitals_state', 'DISABLED'))
+            vitals_quality = str(pose.get('vitals_quality', '-'))
+            sitting_count = int(pose.get('sitting_stable_count', 0))
+            sitting_required = int(pose.get('vitals_required_sitting_frames', 30))
+            sitting_text = '{}/{}'.format(sitting_count, sitting_required)
 
             try:
                 speed_text = '{:.2f}'.format(float(pose.get('horizontal_speed', 0.0)))
             except Exception:
                 speed_text = '-'
-            try:
-                height_drop_text = '{:.2f}'.format(float(pose.get('height_drop', 0.0)))
-            except Exception:
-                height_drop_text = '-'
+            breath_text = _vital_rate_text(pose.get('breathing_rate_bpm'))
+            heart_text = _vital_rate_text(pose.get('heart_rate_bpm'))
 
             values = [
                 str(tid),
                 displayed_label,
-                candidate_label,
-                ml_top_label,
                 confidence,
                 str(pose.get('motion_state', '')),
+                vitals_state,
+                breath_text,
+                heart_text,
+                vitals_quality,
+                sitting_text,
                 speed_text,
-                height_drop_text,
-                stable_text,
-                quality,
-                '{}/8'.format(window_age),
             ]
             for column, value in enumerate(values):
                 self.poseTable.setItem(row, column, QTableWidgetItem(value))

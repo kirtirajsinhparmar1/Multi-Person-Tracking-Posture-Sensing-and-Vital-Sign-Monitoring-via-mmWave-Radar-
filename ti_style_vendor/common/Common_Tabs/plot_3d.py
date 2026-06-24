@@ -40,6 +40,17 @@ class Plot3D():
         self.scatterClusters.setData(pos=np.zeros((1,3)))
         self.plot_3d.addItem(self.scatterClusters)
 
+        # Fusion-provided chest ROI marker. Coordinates use the same IWR frame
+        # as point clouds, target boxes, and human meshes: x lateral, y forward,
+        # z up. Keeping this item in Plot3D avoids a second overlay coordinate
+        # system in the dual-sensor UI.
+        self.chestRoiScatter = gl.GLScatterPlotItem(size=14)
+        self.chestRoiScatter.setData(
+            pos=np.zeros((1, 3)),
+            color=np.array([[0.20, 0.95, 1.0, 0.0]]),
+        )
+        self.plot_3d.addItem(self.chestRoiScatter)
+
         # demo specific
         self.demo = demo
         # Sensor position
@@ -95,11 +106,38 @@ class Plot3D():
         self.humanModelMode = mode or 'overlay_box'
         self.humanModelsFailed = False
 
+    def updateChestRoi(self, records):
+        positions = []
+        for record in records or []:
+            point = [
+                float(record.get('x', 0.0)),
+                float(record.get('y', 0.0)),
+                float(record.get('z', 0.0)),
+            ]
+            if np.all(np.isfinite(point)):
+                positions.append(point)
+        if not positions:
+            self.chestRoiScatter.setData(
+                pos=np.zeros((1, 3)),
+                color=np.array([[0.20, 0.95, 1.0, 0.0]]),
+            )
+            return
+        colors = np.tile(
+            np.array([[0.20, 0.95, 1.0, 1.0]]),
+            (len(positions), 1),
+        )
+        self.chestRoiScatter.setData(
+            pos=np.asarray(positions, dtype=float),
+            color=colors,
+            size=14,
+        )
+
     def updateHumanPoseModels(self, model_records):
         if self.humanModelRenderer is None or self.humanModelsFailed:
-            return
+            return {}
         try:
             self.humanModelRenderer.update_models(model_records or [])
+            return self.getHumanPoseModelBounds()
         except Exception as exc:
             self.humanModelsFailed = True
             log.warning("Human pose models disabled after update failure: %s", exc)
@@ -107,6 +145,13 @@ class Plot3D():
                 self.humanModelRenderer.clear()
             except Exception:
                 pass
+            return {}
+
+    def getHumanPoseModelBounds(self):
+        if self.humanModelRenderer is None:
+            return {}
+        getter = getattr(self.humanModelRenderer, 'get_world_bounds', None)
+        return getter() if callable(getter) else {}
 
     def clearHumanPoseModels(self):
         if self.humanModelRenderer is not None:

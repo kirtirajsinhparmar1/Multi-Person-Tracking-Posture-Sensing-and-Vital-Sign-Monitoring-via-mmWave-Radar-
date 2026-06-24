@@ -370,6 +370,56 @@ def parse_args() -> argparse.Namespace:
         default=0.50,
         help="Minimum confidence for LYING display updates.",
     )
+    parser.add_argument(
+        "--vitals-enable-gate",
+        action="store_true",
+        help="Enable posture-gated vital-sign eligibility per tracked TID.",
+    )
+    parser.add_argument(
+        "--vitals-required-posture",
+        default="SITTING",
+        help="Displayed posture required before vital monitoring is eligible.",
+    )
+    parser.add_argument(
+        "--vitals-sitting-stable-frames",
+        type=int,
+        default=30,
+        help="Continuous eligible sitting frames required before vitals activate.",
+    )
+    parser.add_argument(
+        "--vitals-max-horizontal-speed",
+        type=float,
+        default=0.08,
+        help="Maximum horizontal speed in m/s for vital-sign eligibility.",
+    )
+    parser.add_argument(
+        "--vitals-min-pose-confidence",
+        type=float,
+        default=0.60,
+        help="Minimum displayed-pose confidence for vital-sign eligibility.",
+    )
+    parser.add_argument(
+        "--vitals-grace-frames",
+        type=int,
+        default=15,
+        help="Frames tolerated before an eligible TID is reset or paused.",
+    )
+    parser.add_argument(
+        "--vitals-reset-when-not-sitting",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Reset sitting eligibility after the grace period when posture/speed is invalid.",
+    )
+    parser.add_argument(
+        "--vitals-labels",
+        action="store_true",
+        help="Append compact vital eligibility or real vital rates to 3D labels.",
+    )
+    parser.add_argument(
+        "--vitals-log",
+        action="store_true",
+        help="Add vital eligibility and real TLV measurements to pose_predictions_ui.csv.",
+    )
     return parser.parse_args()
 
 
@@ -694,8 +744,16 @@ def create_pose_manager_before_qt(args: argparse.Namespace, debug: bool):
             human_model_target_height=args.pose_human_model_target_height,
             human_model_target_sitting_height=args.pose_human_model_target_sitting_height,
             human_model_target_lying_length=args.pose_human_model_target_lying_length,
+            vitals_enable_gate=args.vitals_enable_gate,
+            vitals_required_posture=args.vitals_required_posture,
+            vitals_sitting_stable_frames=args.vitals_sitting_stable_frames,
+            vitals_max_horizontal_speed=args.vitals_max_horizontal_speed,
+            vitals_min_pose_confidence=args.vitals_min_pose_confidence,
+            vitals_grace_frames=args.vitals_grace_frames,
+            vitals_reset_when_not_sitting=args.vitals_reset_when_not_sitting,
+            vitals_labels=args.vitals_labels,
             debug=pose_debug,
-            log_dir=out_dir if args.pose_log else None,
+            log_dir=out_dir if (args.pose_log or args.vitals_log) else None,
             cfg_path=resolve_project_path(args.cfg),
             cli_port=args.cli,
             data_port=args.data,
@@ -719,7 +777,7 @@ def create_pose_manager_before_qt(args: argparse.Namespace, debug: bool):
         raise SystemExit(message) from exc
 
     debug_print(pose_debug, f"pose model loaded before Qt: {model_path}")
-    if args.pose_log:
+    if args.pose_log or args.vitals_log:
         debug_print(pose_debug, f"pose logging directory: {out_dir}")
     return pose_manager
 

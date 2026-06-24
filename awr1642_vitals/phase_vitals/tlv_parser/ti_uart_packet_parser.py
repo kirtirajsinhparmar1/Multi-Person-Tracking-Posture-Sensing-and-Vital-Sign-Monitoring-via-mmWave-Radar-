@@ -12,12 +12,32 @@ import struct
 from typing import List
 
 try:
+    from .parse_vital_phase_bin_window_tlv import (
+        VITAL_PHASE_BIN_WINDOW_TLV_ID,
+        VitalPhaseBinWindow,
+        parse_vital_phase_bin_window_payload,
+    )
+    from .parse_vital_phase_virtual_ant_window_tlv import (
+        VITAL_PHASE_VIRTUAL_ANT_WINDOW_TLV_ID,
+        VitalPhaseVirtualAntWindow,
+        parse_vital_phase_virtual_ant_window_payload,
+    )
     from .parse_vital_phase_tlv import (
         VITAL_PHASE_TRACE_TLV_ID,
         parse_vital_phase_payload,
     )
     from .vital_phase_tlv_types import VitalPhaseTrace
 except ImportError:  # Direct script execution from this folder.
+    from parse_vital_phase_bin_window_tlv import (
+        VITAL_PHASE_BIN_WINDOW_TLV_ID,
+        VitalPhaseBinWindow,
+        parse_vital_phase_bin_window_payload,
+    )
+    from parse_vital_phase_virtual_ant_window_tlv import (
+        VITAL_PHASE_VIRTUAL_ANT_WINDOW_TLV_ID,
+        VitalPhaseVirtualAntWindow,
+        parse_vital_phase_virtual_ant_window_payload,
+    )
     from parse_vital_phase_tlv import (
         VITAL_PHASE_TRACE_TLV_ID,
         parse_vital_phase_payload,
@@ -142,6 +162,36 @@ def extract_vital_phase_tlvs(packet: bytes) -> List[VitalPhaseTrace]:
     return records
 
 
+def extract_vital_phase_bin_window_tlvs(packet: bytes) -> List[VitalPhaseBinWindow]:
+    """Extract custom real-I/Q bin-window payloads from one complete packet."""
+    header = parse_frame_header(packet)
+    windows: List[VitalPhaseBinWindow] = []
+
+    for tlv in parse_tlv_headers(packet, header):
+        if tlv.tlv_type != VITAL_PHASE_BIN_WINDOW_TLV_ID:
+            continue
+        payload = packet[tlv.payload_offset : tlv.payload_end]
+        windows.append(parse_vital_phase_bin_window_payload(payload))
+
+    return windows
+
+
+def extract_vital_phase_virtual_ant_window_tlvs(
+    packet: bytes,
+) -> List[VitalPhaseVirtualAntWindow]:
+    """Extract custom FE03 virtual-antenna windows from one complete packet."""
+    header = parse_frame_header(packet)
+    windows: List[VitalPhaseVirtualAntWindow] = []
+
+    for tlv in parse_tlv_headers(packet, header):
+        if tlv.tlv_type != VITAL_PHASE_VIRTUAL_ANT_WINDOW_TLV_ID:
+            continue
+        payload = packet[tlv.payload_offset : tlv.payload_end]
+        windows.append(parse_vital_phase_virtual_ant_window_payload(payload))
+
+    return windows
+
+
 def parse_uart_stream_for_vital_phase(buffer: bytes) -> List[VitalPhaseTrace]:
     """Parse all complete VitalPhaseTrace records from a UART byte stream.
 
@@ -179,3 +229,73 @@ def parse_uart_stream_for_vital_phase(buffer: bytes) -> List[VitalPhaseTrace]:
         cursor = packet_end
 
     return records
+
+
+def parse_uart_stream_for_vital_phase_bin_windows(
+    buffer: bytes,
+) -> List[VitalPhaseBinWindow]:
+    """Parse all complete 0xFE02 windows from a UART byte stream."""
+    windows: List[VitalPhaseBinWindow] = []
+    cursor = 0
+    nbytes = len(buffer)
+
+    while cursor < nbytes:
+        magic_idx = buffer.find(MAGIC_WORD, cursor)
+        if magic_idx < 0 or nbytes - magic_idx < FRAME_HEADER_SIZE:
+            break
+
+        try:
+            header = parse_frame_header(buffer[magic_idx:])
+        except ValueError:
+            cursor = magic_idx + 1
+            continue
+
+        packet_end = magic_idx + header.total_packet_len
+        if packet_end > nbytes:
+            break
+
+        packet = buffer[magic_idx:packet_end]
+        try:
+            windows.extend(extract_vital_phase_bin_window_tlvs(packet))
+        except ValueError:
+            cursor = magic_idx + 1
+            continue
+
+        cursor = packet_end
+
+    return windows
+
+
+def parse_uart_stream_for_vital_phase_virtual_ant_windows(
+    buffer: bytes,
+) -> List[VitalPhaseVirtualAntWindow]:
+    """Parse all complete FE03 virtual-antenna windows from a UART stream."""
+    windows: List[VitalPhaseVirtualAntWindow] = []
+    cursor = 0
+    nbytes = len(buffer)
+
+    while cursor < nbytes:
+        magic_idx = buffer.find(MAGIC_WORD, cursor)
+        if magic_idx < 0 or nbytes - magic_idx < FRAME_HEADER_SIZE:
+            break
+
+        try:
+            header = parse_frame_header(buffer[magic_idx:])
+        except ValueError:
+            cursor = magic_idx + 1
+            continue
+
+        packet_end = magic_idx + header.total_packet_len
+        if packet_end > nbytes:
+            break
+
+        packet = buffer[magic_idx:packet_end]
+        try:
+            windows.extend(extract_vital_phase_virtual_ant_window_tlvs(packet))
+        except ValueError:
+            cursor = magic_idx + 1
+            continue
+
+        cursor = packet_end
+
+    return windows

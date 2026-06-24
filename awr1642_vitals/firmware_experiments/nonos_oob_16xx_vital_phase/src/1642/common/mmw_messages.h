@@ -229,6 +229,16 @@ extern "C"
      */
 #define AWR1642_VITAL_PHASE_FAKE_TLV              1
 #define MMWDEMO_OUTPUT_MSG_VITAL_PHASE_TRACE      0xFE01U
+#define MMWDEMO_OUTPUT_MSG_VITAL_PHASE_BIN_WINDOW 0xFE02U
+#define MMWDEMO_OUTPUT_MSG_VITAL_PHASE_VIRTUAL_ANT_WINDOW 0xFE03U
+
+/*
+ * MMWDEMO_OUTPUT_MSG_MAX reserves enough descriptors for all six standard
+ * OOB TLVs plus the existing 0xFE01 custom TLV. Add two copied-project-only
+ * descriptor slots so 0xFE02 and 0xFE03 can coexist with every standard
+ * output.
+ */
+#define MMWDEMO_OUTPUT_MSG_MAX_TLVS (MMWDEMO_OUTPUT_MSG_MAX + 2U)
 
     typedef struct VitalPhaseTrace_t
     {
@@ -245,6 +255,50 @@ extern "C"
         uint8_t reserved[3];
     } VitalPhaseTrace;
 
+    typedef struct VitalPhaseBinSample_t
+    {
+        uint16_t binIndex;
+        uint16_t reserved;
+        float rangeMeters;
+        float iValue;
+        float qValue;
+        float phaseRad;
+        float magnitude;
+    } VitalPhaseBinSample;
+
+    typedef struct VitalPhaseBinWindowHeader_t
+    {
+        uint32_t frameNumber;
+        uint16_t startBin;
+        uint16_t numBins;
+        float rangeResolution;
+    } VitalPhaseBinWindowHeader;
+
+    typedef struct VitalPhaseVirtualAntWindowHeader_t
+    {
+        uint32_t frameNumber;
+        uint16_t startBin;
+        uint16_t numBins;
+        uint16_t numVirtualAntennas;
+        uint16_t flags;
+        float rangeResolution;
+    } VitalPhaseVirtualAntWindowHeader;
+
+    typedef struct VitalPhaseVirtualAntSample_t
+    {
+        int16_t iValue;
+        int16_t qValue;
+    } VitalPhaseVirtualAntSample;
+
+    typedef char VitalPhaseBinSampleSizeCheck[
+        (sizeof(VitalPhaseBinSample) == 24U) ? 1 : -1];
+    typedef char VitalPhaseBinWindowHeaderSizeCheck[
+        (sizeof(VitalPhaseBinWindowHeader) == 12U) ? 1 : -1];
+    typedef char VitalPhaseVirtualAntWindowHeaderSizeCheck[
+        (sizeof(VitalPhaseVirtualAntWindowHeader) == 16U) ? 1 : -1];
+    typedef char VitalPhaseVirtualAntSampleSizeCheck[
+        (sizeof(VitalPhaseVirtualAntSample) == 4U) ? 1 : -1];
+
     /**
      * @brief
      *  Message for reporting detection information from data path to MSS
@@ -258,7 +312,7 @@ extern "C"
         MmwDemo_output_message_header header;
 
         /*! @brief TLVs of the detection information */
-        MmwDemo_msgTlv tlv[MMWDEMO_OUTPUT_MSG_MAX];
+        MmwDemo_msgTlv tlv[MMWDEMO_OUTPUT_MSG_MAX_TLVS];
     } MmwDemo_detInfoMsg;
 
 #define MMWDEMO_MAX_FILE_NAME_SIZE 128
